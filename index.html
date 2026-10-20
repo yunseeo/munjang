@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>문장 채집</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+<style>
+[hidden] { display: none !important; }
+body { margin: 0; }
+*, *::before, *::after { box-sizing: border-box; }
+/* Layout: one white field; sentences drift across it, a thin top bar holds navigation, overlays take the whole screen. */
+:root {
+  --paper: #ffffff;
+  --ink: #111111;
+  --ink-soft: #6b6b6b;
+  --ink-faint: #b4b4b4;
+  --rule: #e6e6e6;
+  --serif: "Noto Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --sans: "Noto Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: 14px;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
+
+/* top bar */
+.bar {
+  position: fixed; inset: 0 0 auto 0; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
+  padding-bottom: 18px;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  pointer-events: none;
+}
+.bar > * { pointer-events: auto; }
+.logo { font-family: var(--serif); font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.nav { display: flex; gap: 20px; align-items: center; font-size: 13px; color: var(--ink-soft); }
+.nav button:hover { color: var(--ink); }
+.nav .add { color: var(--ink); border-bottom: 1px solid var(--ink); padding-bottom: 1px; }
+
+/* floating field */
+#stage { position: fixed; inset: 0; overflow: hidden; }
+.float {
+  position: absolute; top: 0; left: 0;
+  font-family: var(--serif); color: var(--ink);
+  max-width: min(22em, 70vw); line-height: 1.45;
+  font-weight: 700; letter-spacing: -.02em; word-break: keep-all;
+  white-space: normal; text-align: left;
+  will-change: transform; transition: opacity .4s ease;
+  cursor: pointer;
+}
+.float:hover { opacity: 1 !important; }
+.filter-chip {
+  position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  font-size: 12px; color: var(--ink-soft); display: flex; gap: 14px; align-items: center;
+}
+.filter-chip button { color: var(--ink); border-bottom: 1px solid var(--ink-faint); }
+.empty {
+  position: fixed; inset: 0; display: grid; place-items: center; text-align: center;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+}
+.empty p { font-family: var(--serif); font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.5; margin: 0 0 18px; }
+.empty small { color: var(--ink-soft); font-size: 13px; }
+.empty button { margin-top: 22px; font-size: 13px; border-bottom: 1px solid var(--ink); }
+
+/* overlays */
+.overlay {
+  position: fixed; inset: 0; z-index: 20; background: var(--paper);
+  overflow-y: auto;
+  padding-top: calc(72px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  animation: fade .35s ease;
+}
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+.close {
+  position: fixed; z-index: 21;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  right: max(24px, env(safe-area-inset-right, 0px));
+  font-size: 13px; color: var(--ink-soft);
+}
+.close:hover { color: var(--ink); }
+
+/* detail */
+#detail { display: grid; place-items: center; cursor: default; }
+.detail-inner { max-width: 660px; width: 100%; text-align: left; display: grid; gap: 28px; }
+.detail-text {
+  font-family: var(--serif); font-size: clamp(22px, 3.2vw, 34px); line-height: 1.5;
+  font-weight: 800; letter-spacing: -.03em;
+  margin: 0; white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere;
+  text-align: justify; text-justify: inter-character; text-align-last: left;
+}
+.detail-src { font-size: 13px; color: var(--ink-soft); letter-spacing: .02em; }
+.detail-meta { display: flex; justify-content: flex-start; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--ink-faint); }
+.detail-meta button { color: var(--ink-soft); }
+.detail-meta button:hover { color: var(--ink); }
+.detail-meta .on { color: var(--ink); }
+.tag { color: var(--ink-faint); }
+
+/* form */
+.form { max-width: 32em; margin: 0 auto; display: grid; gap: 26px; }
+.form h2, .lib h2 { font-family: var(--serif); font-weight: 800; font-size: 26px; letter-spacing: -.02em; margin: 0; }
+.field { display: grid; gap: 8px; }
+.field label { font-size: 12px; color: var(--ink-soft); letter-spacing: .04em; }
+.field input, .field textarea {
+  font: inherit; color: var(--ink); background: transparent;
+  border: 0; border-bottom: 1px solid var(--rule); padding: 8px 0; border-radius: 0;
+}
+.field input:focus, .field textarea:focus { border-bottom-color: var(--ink); outline: none; }
+.field textarea { font-family: var(--serif); font-size: 19px; font-weight: 700; letter-spacing: -.02em; line-height: 1.6; resize: none; min-height: 7.5em; }
+.count { font-size: 11px; color: var(--ink-faint); text-align: right; font-variant-numeric: tabular-nums; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.row2 > * { min-width: 0; }
+.submit { justify-self: start; font-size: 14px; border-bottom: 1px solid var(--ink); padding-bottom: 2px; }
+.submit:disabled { color: var(--ink-faint); border-color: var(--ink-faint); cursor: default; }
+.msg { font-size: 12px; color: var(--ink-soft); min-height: 1em; }
+
+/* library */
+.lib { max-width: 40em; margin: 0 auto; display: grid; gap: 28px; }
+.tabs { display: flex; gap: 22px; font-size: 13px; color: var(--ink-faint); border-bottom: 1px solid var(--rule); }
+.tabs button { padding-bottom: 10px; margin-bottom: -1px; border-bottom: 1px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.list { display: grid; }
+.item { text-align: left; padding: 14px 0; border-bottom: 1px solid var(--rule); display: grid; gap: 4px; min-width: 0; }
+.item:hover .item-text { text-decoration: underline; text-decoration-color: var(--ink-faint); text-underline-offset: 4px; }
+.item-text { font-family: var(--serif); font-size: 15px; font-weight: 500; letter-spacing: -.01em; line-height: 1.6; overflow-wrap: anywhere; word-break: keep-all; }
+.item-src { font-size: 12px; color: var(--ink-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.chips button { font-size: 14px; color: var(--ink-soft); }
+.chips button:hover, .chips button.on { color: var(--ink); }
+.chips sup { font-size: 10px; color: var(--ink-faint); margin-left: 2px; font-variant-numeric: tabular-nums; }
+.note { color: var(--ink-soft); font-size: 13px; line-height: 1.7; padding: 24px 0; }
+.tag-actions { font-size: 12px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.tag-actions button { border-bottom: 1px solid var(--ink-faint); color: var(--ink); }
+.confirm { font-size: 12px; color: var(--ink-soft); display: flex; gap: 12px; justify-content: center; }
+.confirm button { color: var(--ink); border-bottom: 1px solid var(--ink); }
+
+@media (max-width: 560px) {
+  .nav { gap: 14px; font-size: 12px; }
+  .row2 { grid-template-columns: 1fr; }
+  .logo { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .overlay { animation: none; }
+}
+</style>
+</head>
+<body>
+
+
+<header class="bar">
+  <div class="logo">문장 채집</div>
+  <nav class="nav">
+    <button id="btnShuffle" type="button">다른 문장</button>
+    <button id="btnLib" type="button">내 서재</button>
+    <button id="btnAdd" class="add" type="button">문장 남기기</button>
+  </nav>
+</header>
+
+<main id="stage" aria-label="떠다니는 문장들"></main>
+
+<div class="empty" id="empty">
+  <div>
+    <p>아직 채집된 문장이 없어요.</p>
+    <small>읽다가 밑줄 그은 문장이 있다면 첫 번째로 남겨주세요.</small><br>
+    <button type="button" id="btnAddEmpty">문장 남기기</button>
+  </div>
+</div>
+
+<div class="filter-chip" id="filterChip" hidden>
+  <span id="filterLabel"></span>
+  <button type="button" id="btnClearFilter">전체 보기</button>
+</div>
+
+<!-- detail -->
+<section class="overlay" id="detail" hidden role="dialog" aria-modal="true" aria-label="문장 보기">
+  <button class="close" type="button" data-close>닫기</button>
+  <div class="detail-inner">
+    <p class="detail-text" id="dText"></p>
+    <div class="detail-src" id="dSrc"></div>
+    <div class="detail-meta" id="dMeta"></div>
+  </div>
+</section>
+
+<!-- add form -->
+<section class="overlay" id="addView" hidden role="dialog" aria-modal="true" aria-label="문장 남기기">
+  <button class="close" type="button" data-close>닫기</button>
+  <form class="form" id="addForm" novalidate>
+    <h2>문장 남기기</h2>
+    <div class="field">
+      <label for="fText">문장</label>
+      <textarea id="fText" maxlength="200" placeholder="마음에 남은 문장을 옮겨 적어주세요" required></textarea>
+      <div class="count"><span id="fCount">0</span> / 200</div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="fAuthor">지은이</label>
+        <input id="fAuthor" maxlength="40" placeholder="예: 한강">
+      </div>
+      <div class="field">
+        <label for="fSource">출처</label>
+        <input id="fSource" maxlength="60" placeholder="책, 영화, 노래 제목">
+      </div>
+    </div>
+    <div class="field">
+      <label for="fTags">태그 (쉼표로 구분, 최대 5개)</label>
+      <input id="fTags" maxlength="80" placeholder="위로, 사랑, 계절">
+    </div>
+    <div class="field">
+      <label for="fNick">남기는 사람 (선택)</label>
+      <input id="fNick" maxlength="20" placeholder="닉네임">
+    </div>
+    <button class="submit" type="submit" id="fSubmit">남기기</button>
+    <div class="msg" id="fMsg" role="status"></div>
+  </form>
+</section>
+
+<!-- library -->
+<section class="overlay" id="libView" hidden role="dialog" aria-modal="true" aria-label="내 서재">
+  <button class="close" type="button" data-close>닫기</button>
+  <div class="lib">
+    <h2>내 서재</h2>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="mine" aria-selected="true">내가 남긴 문장</button>
+      <button type="button" role="tab" data-tab="scrap" aria-selected="false">스크랩</button>
+      <button type="button" role="tab" data-tab="tags" aria-selected="false">태그</button>
+    </div>
+    <div id="libBody"></div>
+  </div>
+</section>
+
+<!-- ===== 여기만 바꾸면 돼요 ===== -->
+<script>
+  window.MUNJANG_CONFIG = {
+    url: "https://isygakvoamgndwtspnkd.supabase.co",       // 예: https://abcdefgh.supabase.co
+    anonKey: "sb_publishable_O0N-WKNnI0qA2zNTWppLlQ_aBFzxFdg"  // 예: eyJhbGciOi... 로 시작하는 긴 글자
+  };
+</script>
+<!-- ============================== -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const state = {
+    sentences: [],      // {id, text, author, source, tags, by, nick, createdAt}
+    scraps: [],
+    uid: null,
+    db: null,
+    canWrite: true,
+    filterTag: null,
+    libTab: 'mine',
+    libTag: null,
+    loaded: false,
+  };
+
+  // ---------- floating field ----------
+  const stage = $('stage');
+  let floats = [];
+  let rafId = null;
+  let lastT = 0;
+
+  function trunc(s, n) { return s.length > n ? s.slice(0, n).trim() + '…' : s; }
+  function shuffle(a) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+
+  function pool() {
+    return state.filterTag ? state.sentences.filter(s => (s.tags || []).includes(state.filterTag)) : state.sentences;
+  }
+
+  function buildField() {
+    stage.textContent = '';
+    floats = [];
+    const p = pool();
+    $('empty').hidden = !(state.loaded && state.sentences.length === 0);
+    if (!p.length) return;
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const max = W < 560 ? 9 : 18;
+    const picks = shuffle(p).slice(0, max);
+    picks.forEach((s, i) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'float';
+      el.textContent = trunc(s.text, W < 560 ? 34 : 52);
+      const depth = Math.random();
+      el.style.fontSize = (13 + depth * 10).toFixed(1) + 'px';
+      el.style.opacity = (0.28 + depth * 0.62).toFixed(2);
+      el.addEventListener('click', () => openDetail(s.id));
+      stage.appendChild(el);
+      const w = el.offsetWidth, h = el.offsetHeight;
+      const speed = (6 + depth * 14) * (reduceMotion ? 0 : 1);
+      const ang = Math.random() * Math.PI * 2;
+      const f = {
+        el, w, h,
+        x: Math.random() * Math.max(1, W - w),
+        y: 70 + Math.random() * Math.max(1, H - h - 110),
+        vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed * 0.6,
+      };
+      floats.push(f);
+      place(f);
+    });
+    if (!rafId && !reduceMotion) { lastT = performance.now(); rafId = requestAnimationFrame(tick); }
+  }
+
+  function place(f) { f.el.style.transform = `translate3d(${f.x.toFixed(1)}px, ${f.y.toFixed(1)}px, 0)`; }
+
+  function tick(t) {
+    const dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+    const W = stage.clientWidth, H = stage.clientHeight;
+    for (const f of floats) {
+      if (f.el.matches(':hover')) continue;
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      if (f.x < -f.w) f.x = W; else if (f.x > W) f.x = -f.w;
+      if (f.y < 56 - f.h) f.y = H; else if (f.y > H) f.y = 56 - f.h;
+      place(f);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(buildField, 250); });
+
+  function setFilter(tag) {
+    state.filterTag = tag;
+    $('filterChip').hidden = !tag;
+    $('filterLabel').textContent = tag ? '#' + tag + ' 문장만 보는 중' : '';
+    buildField();
+  }
+
+  // ---------- overlays ----------
+  const overlays = ['detail', 'addView', 'libView'];
+  let returnTo = null;
+  function show(id) {
+    overlays.forEach(o => { $(o).hidden = o !== id; });
+  }
+  function closeAll() {
+    if (returnTo) { const r = returnTo; returnTo = null; show(r); return; }
+    overlays.forEach(o => { $(o).hidden = true; });
+  }
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeAll));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+  $('detail').addEventListener('click', e => { if (e.target === $('detail')) closeAll(); });
+
+  // ---------- detail ----------
+  let detailId = null;
+  let confirmingDelete = false;
+  function openDetail(id, from) {
+    detailId = id; confirmingDelete = false;
+    returnTo = from || null;
+    renderDetail();
+    show('detail');
+  }
+  function renderDetail() {
+    const s = state.sentences.find(x => x.id === detailId);
+    if (!s) { if (!$('detail').hidden) closeAll(); return; }
+    $('dText').textContent = s.text;
+    const src = [s.author, s.source ? '『' + s.source + '』' : ''].filter(Boolean).join(', ');
+    $('dSrc').textContent = src ? '— ' + src : '';
+    const meta = $('dMeta'); meta.textContent = '';
+    (s.tags || []).forEach(t => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tag';
+      b.textContent = '#' + t;
+      b.addEventListener('click', () => { returnTo = null; closeAll(); setFilter(t); });
+      meta.appendChild(b);
+    });
+    if (s.nick) { const n = document.createElement('span'); n.textContent = s.nick + ' 님이 채집'; meta.appendChild(n); }
+    if (state.uid && state.db) {
+      const on = state.scraps.includes(s.id);
+      const sb = document.createElement('button'); sb.type = 'button';
+      sb.textContent = on ? '스크랩됨' : '스크랩';
+      if (on) sb.className = 'on';
+      sb.addEventListener('click', () => toggleScrap(s.id));
+      meta.appendChild(sb);
+    }
+    if (state.uid && s.by === state.uid) {
+      if (!confirmingDelete) {
+        const db = document.createElement('button'); db.type = 'button'; db.textContent = '삭제';
+        db.addEventListener('click', () => { confirmingDelete = true; renderDetail(); });
+        meta.appendChild(db);
+      } else {
+        const c = document.createElement('span'); c.className = 'confirm';
+        const t = document.createElement('span'); t.textContent = '정말 지울까요?';
+        const y = document.createElement('button'); y.type = 'button'; y.textContent = '지우기';
+        y.addEventListener('click', () => deleteSentence(s.id));
+        const n = document.createElement('button'); n.type = 'button'; n.textContent = '취소';
+        n.addEventListener('click', () => { confirmingDelete = false; renderDetail(); });
+        c.append(t, y, n); meta.appendChild(c);
+      }
+    }
+  }
+
+  // ---------- add ----------
+  function openAdd(tag, from) {
+    try { $('fNick').value = localStorage.getItem('nick') || ''; } catch (e) {}
+    if (typeof tag === 'string' && tag) {
+      const cur = $('fTags').value.split(/[,，#]/).map(t => t.trim()).filter(Boolean);
+      if (!cur.includes(tag)) cur.unshift(tag);
+      $('fTags').value = cur.join(', ');
+    }
+    $('fMsg').textContent = state.db ? (state.canWrite ? '' : '') : '';
+    $('fSubmit').disabled = !state.db || !state.canWrite;
+    returnTo = typeof from === 'string' ? from : null;
+    show('addView');
+    setTimeout(() => $('fText').focus(), 50);
+  }
+  $('fText').addEventListener('input', () => { $('fCount').textContent = $('fText').value.length; });
+  $('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = $('fText').value.trim();
+    if (!text) { $('fMsg').textContent = '문장을 적어주세요.'; $('fText').focus(); return; }
+    if (!state.db) return;
+    const tags = [...new Set($('fTags').value.split(/[,，#]/).map(t => t.trim()).filter(Boolean))].slice(0, 5).map(t => t.slice(0, 15));
+    const nick = $('fNick').value.trim();
+    try { localStorage.setItem('nick', nick); } catch (e) {}
+    const doc = {
+      text: text.slice(0, 200),
+      author: $('fAuthor').value.trim(),
+      source: $('fSource').value.trim(),
+      tags, nick, by: state.uid || '', createdAt: Date.now(),
+    };
+    $('fSubmit').disabled = true; $('fMsg').textContent = '남기는 중…';
+    try {
+      await state.db.collection('sentences').add(doc);
+      $('addForm').reset(); $('fCount').textContent = '0';
+      try { $('fNick').value = nick; } catch (e) {}
+      $('fMsg').textContent = '남겼어요. 이제 이 문장도 함께 떠다녀요.';
+      setTimeout(() => { if (!$('addView').hidden) closeAll(); }, 1200);
+    } catch (err) {
+      if (err && err.code === 'invalid_argument') { state.canWrite = false; $('fMsg').textContent = '이 링크에서는 문장을 남길 수 없어요. 공유한 사람에게 참여 권한을 요청해주세요.'; }
+      else if (err && err.code === 'quota_exceeded') $('fMsg').textContent = '저장 공간이 가득 찼어요. 관리자에게 알려주세요.';
+      else { console.error(err); $('fMsg').textContent = '남기지 못했어요. 인터넷 연결을 확인하고 다시 시도해주세요.'; }
+    } finally {
+      $('fSubmit').disabled = !state.canWrite;
+    }
+  });
+
+  async function deleteSentence(id) {
+    try { await state.db.doc('sentences/' + id).delete(); closeAll(); }
+    catch (e) { confirmingDelete = false; renderDetail(); }
+  }
+
+  // ---------- scraps ----------
+  let scrapBusy = false;
+  async function toggleScrap(id) {
+    if (!state.uid || !state.db || scrapBusy) return;
+    const next = state.scraps.includes(id) ? state.scraps.filter(x => x !== id) : [...state.scraps, id];
+    state.scraps = next; renderDetail(); renderLib();
+    scrapBusy = true;
+    try { await state.db.doc('data/users/' + state.uid + '/me').set({ scraps: next }); }
+    catch (e) { /* snapshot will restore true state */ }
+    finally { scrapBusy = false; }
+  }
+
+  // ---------- library ----------
+  function openLib() { returnTo = null; renderLib(); show('libView'); }
+  document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+    state.libTab = b.dataset.tab;
+    document.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    renderLib();
+  }));
+
+  function listOf(items, emptyText) {
+    const wrap = document.createElement('div'); wrap.className = 'list';
+    if (!items.length) { const n = document.createElement('div'); n.className = 'note'; n.textContent = emptyText; return n; }
+    items.forEach(s => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'item';
+      const t = document.createElement('div'); t.className = 'item-text'; t.textContent = s.text;
+      const src = document.createElement('div'); src.className = 'item-src';
+      src.textContent = [s.author, s.source ? '『' + s.source + '』' : '', ...(s.tags || []).map(x => '#' + x)].filter(Boolean).join('  ·  ');
+      b.append(t, src);
+      b.addEventListener('click', () => openDetail(s.id, 'libView'));
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function renderLib() {
+    const body = $('libBody'); if (!body) return;
+    body.textContent = '';
+    const byNew = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+    if (!state.uid && state.libTab !== 'tags') {
+      const n = document.createElement('div'); n.className = 'note';
+      n.textContent = '로그인하면 내가 남긴 문장과 스크랩을 모아볼 수 있어요.';
+      body.appendChild(n); return;
+    }
+    if (state.libTab === 'mine') {
+      body.appendChild(listOf(state.sentences.filter(s => s.by === state.uid).sort(byNew), '아직 남긴 문장이 없어요. 오른쪽 위 ‘문장 남기기’에서 첫 문장을 채집해보세요.'));
+    } else if (state.libTab === 'scrap') {
+      const map = new Map(state.sentences.map(s => [s.id, s]));
+      const items = state.scraps.slice().reverse().map(id => map.get(id)).filter(Boolean);
+      body.appendChild(listOf(items, '떠다니는 문장을 눌러 ‘스크랩’하면 여기에 모여요.'));
+    } else {
+      const counts = new Map();
+      state.sentences.forEach(s => (s.tags || []).forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+      const tags = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+      if (!tags.length) { const n = document.createElement('div'); n.className = 'note'; n.textContent = '아직 태그가 붙은 문장이 없어요.'; body.appendChild(n); return; }
+      const chips = document.createElement('div'); chips.className = 'chips';
+      tags.forEach(([t, c]) => {
+        const b = document.createElement('button'); b.type = 'button';
+        if (t === state.libTag) b.className = 'on';
+        b.append('#' + t); const sup = document.createElement('sup'); sup.textContent = c; b.appendChild(sup);
+        b.addEventListener('click', () => { state.libTag = state.libTag === t ? null : t; renderLib(); });
+        chips.appendChild(b);
+      });
+      body.appendChild(chips);
+      if (state.libTag) {
+        const acts = document.createElement('div'); acts.className = 'tag-actions'; acts.style.marginTop = '24px';
+        const lbl = document.createElement('span'); lbl.textContent = '#' + state.libTag;
+        const go = document.createElement('button'); go.type = 'button'; go.textContent = '이 태그만 떠다니게 보기';
+        const tag = state.libTag;
+        go.addEventListener('click', () => { returnTo = null; closeAll(); setFilter(tag); });
+        const write = document.createElement('button'); write.type = 'button'; write.textContent = '이 태그로 문장 남기기';
+        write.addEventListener('click', () => openAdd(tag, 'libView'));
+        acts.append(lbl, write, go); body.appendChild(acts);
+        body.appendChild(listOf(state.sentences.filter(s => (s.tags || []).includes(state.libTag)).sort(byNew), ''));
+      }
+    }
+  }
+
+  // ---------- wiring ----------
+  $('btnAdd').addEventListener('click', openAdd);
+  $('btnAddEmpty').addEventListener('click', openAdd);
+  $('btnLib').addEventListener('click', openLib);
+  $('btnShuffle').addEventListener('click', buildField);
+  $('btnClearFilter').addEventListener('click', () => setFilter(null));
+  $('empty').hidden = true;
+
+  // ---------- data (Supabase) ----------
+  function makeSupaDb(client) {
+    const KEY_MINE = 'munjang.mine', KEY_SCRAP = 'munjang.scraps';
+    const load = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+    const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+    let mine = load(KEY_MINE), scraps = load(KEY_SCRAP), rows = [];
+    const listListeners = [], scrapListeners = [];
+    const snapOf = (id, data) => ({ id, exists: !!data, data: () => data });
+    const emitList = () => {
+      const docs = rows.map(r => snapOf(r.id, {
+        text: r.text, author: r.author || '', source: r.source || '', tags: r.tags || [], nick: r.nick || '',
+        by: mine.includes(r.id) ? 'local' : '', createdAt: Date.parse(r.created_at) || 0,
+      }));
+      listListeners.forEach(l => l.next({ docs }));
+    };
+    const emitScraps = () => scrapListeners.forEach(fn => fn(snapOf('me', { scraps: scraps.slice() })));
+    let lastSig = '';
+    async function refresh() {
+      const { data, error } = await client.from('sentences').select('*').order('created_at', { ascending: false }).limit(1000);
+      if (error) throw error;
+      const sig = (data || []).map(r => r.id).join(',');
+      rows = data || [];
+      if (sig !== lastSig || !lastSig) { lastSig = sig; emitList(); }
+    }
+    const query = {
+      orderBy() { return query; }, limit() { return query; },
+      onSnapshot(next, error) {
+        listListeners.push({ next });
+        refresh().catch(err => { console.error(err); error && error(err); });
+        setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 20000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh().catch(() => {}); });
+        return () => {};
+      },
+      async add(doc) {
+        const { data, error } = await client.from('sentences')
+          .insert({ text: doc.text, author: doc.author, source: doc.source, tags: doc.tags, nick: doc.nick })
+          .select().single();
+        if (error) throw error;
+        mine.push(data.id); save(KEY_MINE, mine);
+        rows = [data].concat(rows.filter(r => r.id !== data.id)); lastSig = rows.map(r => r.id).join(',');
+        emitList();
+        return { id: data.id };
+      },
+    };
+    return {
+      collection() { return query; },
+      doc(path) {
+        if (path.startsWith('sentences/')) {
+          const id = path.slice(10);
+          return { async delete() {
+            const { error } = await client.from('sentences').delete().eq('id', id);
+            if (error) throw error;
+            mine = mine.filter(x => x !== id); scraps = scraps.filter(x => x !== id);
+            save(KEY_MINE, mine); save(KEY_SCRAP, scraps);
+            rows = rows.filter(r => r.id !== id); lastSig = rows.map(r => r.id).join(',');
+            emitList(); emitScraps();
+          } };
+        }
+        return {
+          async set(d) { scraps = Array.isArray(d.scraps) ? d.scraps.slice() : []; save(KEY_SCRAP, scraps); },
+          onSnapshot(fn) { scrapListeners.push(fn); setTimeout(() => fn(snapOf('me', { scraps: scraps.slice() })), 0); return () => {}; },
+        };
+      },
+    };
+  }
+
+  function showEmptyMessage(main, sub) {
+    const p = document.querySelector('#empty p'), s = document.querySelector('#empty small');
+    p.textContent = main; s.textContent = sub;
+  }
+
+  function start() {
+    const cfg = window.MUNJANG_CONFIG || {};
+    const ready = cfg.url && cfg.anonKey && !cfg.url.includes('여기에') && window.supabase && window.supabase.createClient;
+    if (!ready) {
+      state.loaded = true; state.db = null; buildField();
+      showEmptyMessage('저장소가 아직 연결되지 않았어요.', '파일 위쪽의 MUNJANG_CONFIG에 Supabase 주소와 키를 넣어주세요.');
+      $('empty').hidden = false; $('btnAddEmpty').hidden = true;
+      return;
+    }
+    const client = window.supabase.createClient(cfg.url, cfg.anonKey);
+    const db = makeSupaDb(client);
+    state.db = db; state.uid = 'local'; state.canWrite = true;
+    let first = true;
+    db.collection('sentences').orderBy('createdAt', 'desc').limit(1000).onSnapshot(snap => {
+      const prevIds = state.sentences.map(s => s.id).join(',');
+      state.sentences = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
+        .filter(s => typeof s.text === 'string' && s.text.trim());
+      state.loaded = true;
+      const nowIds = state.sentences.map(s => s.id).join(',');
+      if (first || prevIds !== nowIds) buildField();
+      first = false;
+      if (!$('detail').hidden) renderDetail();
+      if (!$('libView').hidden) renderLib();
+    }, () => {
+      state.loaded = true; buildField();
+      showEmptyMessage('문장을 불러오지 못했어요.', '인터넷 연결과 Supabase 설정(주소, 키, 표 이름)을 확인해주세요.');
+      $('empty').hidden = false;
+    });
+    db.doc('data/users/local/me').onSnapshot(snap => {
+      if (scrapBusy) return;
+      const d = snap.exists ? snap.data() : null;
+      state.scraps = d && Array.isArray(d.scraps) ? d.scraps.slice() : [];
+      if (!$('detail').hidden) renderDetail();
+      if (!$('libView').hidden) renderLib();
+    });
+  }
+  start();
+})();
+</script>
+</body>
+</html>
