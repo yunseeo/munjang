@@ -42,7 +42,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .bar > * { pointer-events: auto; }
 .logo { font-family: var(--serif); font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
-.nav { display: flex; gap: 20px; align-items: center; font-size: 13px; color: var(--ink-soft); }
+.nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 20px; align-items: center; font-size: 13px; color: var(--ink-soft); }
 .nav button:hover { color: var(--ink); }
 .nav .add { color: var(--ink); border-bottom: 1px solid var(--ink); padding-bottom: 1px; }
 
@@ -96,7 +96,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 #detail { display: grid; place-items: center; cursor: default; }
 .detail-inner { max-width: 660px; width: 100%; text-align: left; display: grid; gap: 28px; }
 .detail-text {
-  font-family: var(--serif); font-size: clamp(22px, 3.2vw, 34px); line-height: 1.5;
+  font-family: var(--serif); font-size: clamp(20px, 2.6vw, 28px); line-height: 1.5;
   font-weight: 800; letter-spacing: -.03em;
   margin: 0; white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere;
   text-align: justify; text-justify: inter-character; text-align-last: left;
@@ -146,6 +146,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .confirm { font-size: 12px; color: var(--ink-soft); display: flex; gap: 12px; justify-content: center; }
 .confirm button { color: var(--ink); border-bottom: 1px solid var(--ink); }
 
+.all-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.all-count { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
 @media (max-width: 560px) {
   .nav { gap: 14px; font-size: 12px; }
   .row2 { grid-template-columns: 1fr; }
@@ -162,7 +165,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 <header class="bar">
   <div class="logo">문장 채집</div>
   <nav class="nav">
-    <button id="btnShuffle" type="button">다른 문장</button>
+    <button id="btnShuffle" type="button" title="지금 떠다니는 문장들을 다른 문장으로 바꿔요">새로 섞기</button>
+    <button id="btnAll" type="button">모든 문장</button>
     <button id="btnLib" type="button">내 서재</button>
     <button id="btnAdd" class="add" type="button">문장 남기기</button>
   </nav>
@@ -197,7 +201,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 <section class="overlay" id="addView" hidden role="dialog" aria-modal="true" aria-label="문장 남기기">
   <button class="close" type="button" data-close>닫기</button>
   <form class="form" id="addForm" novalidate>
-    <h2>문장 남기기</h2>
+    <h2 id="fHead">문장 남기기</h2>
     <div class="field">
       <label for="fText">문장</label>
       <textarea id="fText" maxlength="200" placeholder="마음에 남은 문장을 옮겨 적어주세요" required></textarea>
@@ -224,6 +228,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     <button class="submit" type="submit" id="fSubmit">남기기</button>
     <div class="msg" id="fMsg" role="status"></div>
   </form>
+</section>
+
+<!-- all sentences -->
+<section class="overlay" id="allView" hidden role="dialog" aria-modal="true" aria-label="모든 문장">
+  <button class="close" type="button" data-close>닫기</button>
+  <div class="lib">
+    <div class="all-head">
+      <h2>모든 문장</h2>
+      <span class="all-count" id="allCount"></span>
+    </div>
+    <div class="field">
+      <label for="allSearch">찾기</label>
+      <input id="allSearch" type="search" placeholder="문장, 지은이, 출처, 태그로 찾기">
+    </div>
+    <div id="allBody"></div>
+  </div>
 </section>
 
 <!-- library -->
@@ -339,12 +359,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   }
 
   // ---------- overlays ----------
-  const overlays = ['detail', 'addView', 'libView'];
+  const overlays = ['detail', 'addView', 'libView', 'allView'];
   let returnTo = null;
   function show(id) {
     overlays.forEach(o => { $(o).hidden = o !== id; });
   }
   function closeAll() {
+    if (!$('addView').hidden && editingId) endEdit();
+    if (returnTo === 'detail') { show('detail'); returnTo = editReturn; editReturn = null; return; }
     if (returnTo) { const r = returnTo; returnTo = null; show(r); return; }
     overlays.forEach(o => { $(o).hidden = true; });
   }
@@ -385,6 +407,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     }
     if (state.uid && s.by === state.uid) {
       if (!confirmingDelete) {
+        const eb = document.createElement('button'); eb.type = 'button'; eb.textContent = '수정';
+        eb.addEventListener('click', () => openEdit(s));
+        meta.appendChild(eb);
         const db = document.createElement('button'); db.type = 'button'; db.textContent = '삭제';
         db.addEventListener('click', () => { confirmingDelete = true; renderDetail(); });
         meta.appendChild(db);
@@ -400,8 +425,30 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     }
   }
 
-  // ---------- add ----------
+  // ---------- add / edit ----------
+  let editingId = null, editReturn = null;
+  function setFormMode(editing) {
+    $('fHead').textContent = editing ? '문장 고치기' : '문장 남기기';
+    $('fSubmit').textContent = editing ? '고치기' : '남기기';
+  }
+  function endEdit() {
+    editingId = null;
+    $('addForm').reset(); $('fCount').textContent = '0'; $('fMsg').textContent = '';
+    setFormMode(false);
+  }
+  function openEdit(s) {
+    editingId = s.id;
+    $('fText').value = s.text; $('fCount').textContent = s.text.length;
+    $('fAuthor').value = s.author || ''; $('fSource').value = s.source || '';
+    $('fTags').value = (s.tags || []).join(', '); $('fNick').value = s.nick || '';
+    $('fMsg').textContent = ''; $('fSubmit').disabled = false;
+    setFormMode(true);
+    editReturn = returnTo; returnTo = 'detail';
+    show('addView');
+    setTimeout(() => $('fText').focus(), 50);
+  }
   function openAdd(tag, from) {
+    if (editingId) endEdit();
     try { $('fNick').value = localStorage.getItem('nick') || ''; } catch (e) {}
     if (typeof tag === 'string' && tag) {
       const cur = $('fTags').value.split(/[,，#]/).map(t => t.trim()).filter(Boolean);
@@ -429,7 +476,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
       source: $('fSource').value.trim(),
       tags, nick, by: state.uid || '', createdAt: Date.now(),
     };
-    $('fSubmit').disabled = true; $('fMsg').textContent = '남기는 중…';
+    $('fSubmit').disabled = true;
+    if (editingId) {
+      $('fMsg').textContent = '고치는 중…';
+      try {
+        await state.db.doc('sentences/' + editingId).update({ text: doc.text, author: doc.author, source: doc.source, tags: doc.tags, nick: doc.nick });
+        endEdit(); renderDetail(); closeAll();
+      } catch (err) {
+        console.error(err);
+        $('fMsg').textContent = '고치지 못했어요. Supabase에 수정 권한 설정(update)이 추가되었는지 확인해주세요.';
+      } finally { $('fSubmit').disabled = false; }
+      return;
+    }
+    $('fMsg').textContent = '남기는 중…';
     try {
       await state.db.collection('sentences').add(doc);
       $('addForm').reset(); $('fCount').textContent = '0';
@@ -479,7 +538,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
       const src = document.createElement('div'); src.className = 'item-src';
       src.textContent = [s.author, s.source ? '『' + s.source + '』' : '', ...(s.tags || []).map(x => '#' + x)].filter(Boolean).join('  ·  ');
       b.append(t, src);
-      b.addEventListener('click', () => openDetail(s.id, 'libView'));
+      b.addEventListener('click', () => openDetail(s.id, $('allView').hidden ? 'libView' : 'allView'));
       wrap.appendChild(b);
     });
     return wrap;
@@ -491,11 +550,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     const byNew = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
     if (!state.uid && state.libTab !== 'tags') {
       const n = document.createElement('div'); n.className = 'note';
-      n.textContent = '로그인하면 내가 남긴 문장과 스크랩을 모아볼 수 있어요.';
+      n.textContent = '저장소에 연결되지 않아 내 서재를 불러올 수 없어요.';
       body.appendChild(n); return;
     }
     if (state.libTab === 'mine') {
-      body.appendChild(listOf(state.sentences.filter(s => s.by === state.uid).sort(byNew), '아직 남긴 문장이 없어요. 오른쪽 위 ‘문장 남기기’에서 첫 문장을 채집해보세요.'));
+      body.appendChild(listOf(state.sentences.filter(s => s.by === state.uid).sort(byNew), '아직 남긴 문장이 없어요. 본인이 수집한 문장을 남겨보세요.'));
     } else if (state.libTab === 'scrap') {
       const map = new Map(state.sentences.map(s => [s.id, s]));
       const items = state.scraps.slice().reverse().map(id => map.get(id)).filter(Boolean);
@@ -528,11 +587,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     }
   }
 
+  // ---------- all sentences ----------
+  function openAll() { returnTo = null; renderAll(); show('allView'); }
+  function renderAll() {
+    const body = $('allBody'); if (!body) return;
+    body.textContent = '';
+    const q = $('allSearch').value.trim().toLowerCase();
+    const all = state.sentences.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const items = q ? all.filter(s => [s.text, s.author, s.source, s.nick, ...(s.tags || [])].join(' ').toLowerCase().includes(q)) : all;
+    $('allCount').textContent = q ? items.length + ' / ' + all.length + '개' : all.length + '개';
+    body.appendChild(listOf(items, q ? '찾는 문장이 없어요.' : '아직 채집된 문장이 없어요.'));
+  }
+  $('allSearch').addEventListener('input', renderAll);
+
   // ---------- wiring ----------
   $('btnAdd').addEventListener('click', openAdd);
   $('btnAddEmpty').addEventListener('click', openAdd);
   $('btnLib').addEventListener('click', openLib);
-  $('btnShuffle').addEventListener('click', buildField);
+  $('btnAll').addEventListener('click', openAll);
+  $('btnShuffle').addEventListener('click', () => { buildField(); if (!reduceMotion && stage.animate) stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600, easing: 'ease-out' }); });
   $('btnClearFilter').addEventListener('click', () => setFilter(null));
   $('empty').hidden = true;
 
@@ -553,10 +626,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     };
     const emitScraps = () => scrapListeners.forEach(fn => fn(snapOf('me', { scraps: scraps.slice() })));
     let lastSig = '';
+    const sigOf = (rs) => rs.map(r => [r.id, r.text, r.author, r.source, (r.tags || []).join('|'), r.nick].join('\u0001')).join('\u0002');
     async function refresh() {
       const { data, error } = await client.from('sentences').select('*').order('created_at', { ascending: false }).limit(1000);
       if (error) throw error;
-      const sig = (data || []).map(r => r.id).join(',');
+      const sig = sigOf(data || []);
       rows = data || [];
       if (sig !== lastSig || !lastSig) { lastSig = sig; emitList(); }
     }
@@ -575,7 +649,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
           .select().single();
         if (error) throw error;
         mine.push(data.id); save(KEY_MINE, mine);
-        rows = [data].concat(rows.filter(r => r.id !== data.id)); lastSig = rows.map(r => r.id).join(',');
+        rows = [data].concat(rows.filter(r => r.id !== data.id)); lastSig = sigOf(rows);
         emitList();
         return { id: data.id };
       },
@@ -585,12 +659,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
       doc(path) {
         if (path.startsWith('sentences/')) {
           const id = path.slice(10);
-          return { async delete() {
+          return {
+          async update(fields) {
+            const { data, error } = await client.from('sentences').update(fields).eq('id', id).select().single();
+            if (error) throw error;
+            rows = rows.map(r => r.id === id ? data : r); lastSig = sigOf(rows);
+            emitList();
+          },
+          async delete() {
             const { error } = await client.from('sentences').delete().eq('id', id);
             if (error) throw error;
             mine = mine.filter(x => x !== id); scraps = scraps.filter(x => x !== id);
             save(KEY_MINE, mine); save(KEY_SCRAP, scraps);
-            rows = rows.filter(r => r.id !== id); lastSig = rows.map(r => r.id).join(',');
+            rows = rows.filter(r => r.id !== id); lastSig = sigOf(rows);
             emitList(); emitScraps();
           } };
         }
@@ -621,15 +702,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     state.db = db; state.uid = 'local'; state.canWrite = true;
     let first = true;
     db.collection('sentences').orderBy('createdAt', 'desc').limit(1000).onSnapshot(snap => {
-      const prevIds = state.sentences.map(s => s.id).join(',');
+      const sigS = (arr) => arr.map(s => s.id + '\u0001' + s.text).join('\u0002');
+      const prevIds = sigS(state.sentences);
       state.sentences = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
         .filter(s => typeof s.text === 'string' && s.text.trim());
       state.loaded = true;
-      const nowIds = state.sentences.map(s => s.id).join(',');
+      const nowIds = sigS(state.sentences);
       if (first || prevIds !== nowIds) buildField();
       first = false;
       if (!$('detail').hidden) renderDetail();
       if (!$('libView').hidden) renderLib();
+      if (!$('allView').hidden) renderAll();
     }, () => {
       state.loaded = true; buildField();
       showEmptyMessage('문장을 불러오지 못했어요.', '인터넷 연결과 Supabase 설정(주소, 키, 표 이름)을 확인해주세요.');
